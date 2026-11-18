@@ -1,0 +1,1967 @@
+```html
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PetaTrack PDF" />
+  <title>PetaTrack PDF - Aplikasi Android Pelacak GPS & Ekspor GPX</title>
+  <link id="pwaManifestLink" rel="manifest" />
+  <link id="pwaIconLink" rel="icon" type="image/png" />
+  <link id="pwaAppleIconLink" rel="apple-touch-icon" />
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- PDF.js via CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  
+  <!-- Leaflet JS & CSS via CDN untuk Google Jalan & Satelit -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  
+  <!-- Lucide Icons via CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      overscroll-behavior: none;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .font-mono-code {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* Custom scrollbar for floating panels */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.2);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.4);
+      border-radius: 9999px;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.8); opacity: 0.9; }
+      100% { transform: scale(2.6); opacity: 0; }
+    }
+    .animate-pulse-ring {
+      animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
+    /* Penyesuaian tampilan Leaflet agar selaras dengan tema gelap */
+    .leaflet-container {
+      background: #0f172a !important;
+      font-family: 'Inter', sans-serif !important;
+    }
+    .leaflet-control-attribution {
+      background: rgba(15, 23, 42, 0.7) !important;
+      color: #94a3b8 !important;
+      font-size: 10px !important;
+      border-top-left-radius: 8px;
+    }
+    .leaflet-control-attribution a {
+      color: #38bdf8 !important;
+    }
+    .gps-pulse-marker {
+      position: relative;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .gps-pulse-ring {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      border-radius: 9999px;
+      background: rgba(14, 165, 233, 0.45);
+      animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+    }
+    .gps-pulse-core {
+      position: relative;
+      width: 14px;
+      height: 14px;
+      border-radius: 9999px;
+      background: #0284c7;
+      border: 2.5px solid #ffffff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    }
+    .wpt-leaflet-label {
+      background: rgba(15, 23, 42, 0.9);
+      color: #fde68a;
+      border: 1px solid rgba(245, 158, 11, 0.5);
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 w-screen h-screen overflow-hidden relative">
+
+  <!-- =========================================================
+       VIEWPORT UTAMA FULL-SCREEN (GOOGLE JALAN LEAFLET + PETA PDF)
+  ========================================================= -->
+  <div id="viewportContainer" class="w-full h-full relative overflow-hidden bg-slate-900">
+    
+    <!-- Layer 1: Peta Jalan / Satelit Google (Leaflet) - Aktif Default -->
+    <div id="googleMapContainer" class="absolute inset-0 w-full h-full z-10"></div>
+
+    <!-- Layer 2: Kanvas Peta PDF Kustom (Disembunyikan saat mode Google Jalan aktif) -->
+    <div id="pdfMapWrapper" class="hidden absolute inset-0 w-full h-full z-10 cursor-grab active:cursor-grabbing bg-slate-900">
+      <canvas id="mapCanvas" class="block w-full h-full"></canvas>
+
+      <!-- Layar Awal Upload PDF (Hanya muncul saat di mode Peta PDF & belum ada PDF) -->
+      <div id="emptyStateOverlay" class="absolute inset-0 flex flex-col items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md z-20 transition-opacity duration-300">
+        <div class="max-w-md w-full bg-slate-900/90 border border-slate-700/80 rounded-3xl p-7 shadow-2xl text-center">
+          <div class="w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center mx-auto mb-5 text-emerald-400">
+            <i data-lucide="map" class="w-8 h-8"></i>
+          </div>
+          <h1 class="text-2xl font-bold tracking-tight text-white mb-2">Mode Peta PDF Kustom</h1>
+          <p class="text-sm text-slate-300 mb-6 leading-relaxed">
+            Unggah peta PDF lapangan (GeoPDF / peta cetak / denah kawasan) untuk ditampilkan penuh layar, kalibrasi 2 titik koordinat GPS, dan sinkronkan jalur tracking Anda.
+          </p>
+
+          <label for="pdfFileInput" class="w-full flex items-center justify-center gap-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold py-3.5 px-5 rounded-2xl shadow-lg shadow-emerald-950/50 cursor-pointer transition-all">
+            <i data-lucide="file-up" class="w-5 h-5"></i>
+            <span>Pilih File Peta PDF</span>
+          </label>
+          <input type="file" id="pdfFileInput" accept="application/pdf" class="hidden" />
+
+          <button id="loadDemoPdfBtn" class="mt-3 w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium py-3 px-4 rounded-2xl border border-slate-700 transition-all">
+            <i data-lucide="compass" class="w-4 h-4 text-sky-400"></i>
+            <span>Coba Peta Sampel Otomatis</span>
+          </button>
+
+          <button id="backToGoogleMapBtn" class="mt-3 w-full flex items-center justify-center gap-2 bg-transparent hover:bg-slate-800/60 text-slate-400 hover:text-slate-200 text-xs font-medium py-2.5 px-4 rounded-xl transition-all">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+            <span>Kembali ke Peta Jalan Google</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Banner Instruksi Saat Mode Kalibrasi Aktif -->
+    <div id="calibrationBanner" class="hidden absolute top-28 sm:top-20 left-1/2 -translate-x-1/2 z-30 w-[92%] max-w-lg bg-amber-500/95 text-slate-950 backdrop-blur-md px-4 py-3 rounded-2xl shadow-xl border border-amber-300 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5">
+        <i data-lucide="crosshair" class="w-5 h-5 shrink-0 animate-spin" style="animation-duration: 6s;"></i>
+        <div class="text-xs sm:text-sm font-semibold leading-snug" id="calibrationBannerText">
+          Ketuk pada peta PDF untuk menandai Titik Ikat A
+        </div>
+      </div>
+      <button id="cancelCalibStepBtn" class="px-2.5 py-1 bg-slate-950/15 hover:bg-slate-950/25 rounded-xl text-xs font-bold shrink-0">
+        Batal
+      </button>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       TOP HUD: STATUS GPS, PENGALIH PETA JALAN/PDF & TOMBOL CEPAT
+  ========================================================= -->
+  <header id="topHud" class="fixed top-3 left-3 right-3 z-20 flex flex-col sm:flex-row items-stretch sm:items-start justify-between gap-2 pointer-events-none">
+    
+    <!-- Baris Kiri: Kartu Status Lokasi & Akurasi -->
+    <div class="flex items-center justify-between gap-2">
+      <div class="pointer-events-auto bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl px-3.5 py-2 shadow-xl flex items-center gap-2.5 flex-1 sm:flex-initial">
+        <div class="relative flex items-center justify-center w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 shrink-0">
+          <span id="gpsPulseDot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center gap-1.5">
+            <span id="gpsStatusLabel" class="text-[11px] sm:text-xs font-semibold text-slate-300 truncate">GPS Menunggu</span>
+            <span id="accuracyBadge" class="text-[10px] font-mono-code px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700">
+              ±-- m
+            </span>
+          </div>
+          <div id="coordDisplay" class="text-xs font-mono-code text-white font-medium truncate mt-0.5">
+            3.761500, 98.451200
+          </div>
+        </div>
+      </div>
+
+      <!-- Tombol Sembunyikan HUD (Mobile) -->
+      <button id="toggleHudBtnMobile" title="Mode Peta Penuh" class="sm:hidden pointer-events-auto p-2.5 bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700/80 rounded-2xl text-slate-200 shadow-lg transition shrink-0">
+        <i data-lucide="maximize-2" class="w-5 h-5"></i>
+      </button>
+    </div>
+
+    <!-- Baris Kanan / Tengah: Pengalih Mode Peta (Google Jalan / Satelit / PDF) & Aksi -->
+    <div class="pointer-events-auto flex items-center justify-between sm:justify-end gap-1.5 flex-wrap">
+      
+      <!-- Switcher Utama: Peta Jalan vs Peta PDF -->
+      <div class="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 p-1 rounded-2xl shadow-xl flex items-center gap-1">
+        <button id="modeGoogleBtn" class="px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 bg-emerald-600 text-white shadow transition">
+          <i data-lucide="map-pinned" class="w-3.5 h-3.5"></i>
+          <span>Peta Jalan</span>
+        </button>
+        <button id="modePdfBtn" class="px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 text-slate-300 hover:text-white hover:bg-slate-800 transition">
+          <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+          <span>Peta PDF</span>
+        </button>
+      </div>
+
+      <!-- Sub-kontrol khusus Mode Google Jalan: Toggle Satelit -->
+      <button id="toggleSatelliteBtn" title="Ganti Tampilan Jalan / Satelit Google" class="px-2.5 py-2 bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700/80 rounded-2xl text-sky-400 font-semibold text-xs flex items-center gap-1.5 shadow-lg transition">
+        <i data-lucide="satellite" class="w-4 h-4"></i>
+        <span id="satBtnLabel">Satelit</span>
+      </button>
+
+      <!-- Tombol Install Aplikasi Android (PWA) -->
+      <button id="openInstallAndroidBtn" title="Download / Install Aplikasi di HP Android" class="px-2.5 py-2 bg-emerald-600 hover:bg-emerald-500 backdrop-blur-md border border-emerald-400/50 rounded-2xl text-white font-semibold text-xs flex items-center gap-1.5 shadow-lg transition">
+        <i data-lucide="smartphone" class="w-4 h-4"></i>
+        <span>Install Android</span>
+      </button>
+
+      <!-- Tombol APK Builder (Export Paket Build APK) -->
+      <button id="openApkBuilderBtn" title="Paket Export & Build File APK Android" class="px-2.5 py-2 bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-indigo-500/50 rounded-2xl text-indigo-300 font-semibold text-xs flex items-center gap-1.5 shadow-lg transition">
+        <i data-lucide="package" class="w-4 h-4 text-indigo-400"></i>
+        <span class="hidden md:inline">APK Builder</span>
+      </button>
+
+      <!-- Sub-kontrol khusus Mode Peta PDF: Upload & Kalibrasi -->
+      <button id="reuploadBtn" title="Unggah / Ganti Peta PDF" class="px-2.5 py-2 bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700/80 rounded-2xl text-slate-200 font-semibold text-xs flex items-center gap-1.5 shadow-lg transition">
+        <i data-lucide="file-up" class="w-4 h-4 text-emerald-400"></i>
+        <span class="hidden md:inline">Upload PDF</span>
+      </button>
+
+      <button id="openCalibModalBtn" title="Kalibrasi Peta PDF" class="hidden px-2.5 py-2 bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700/80 rounded-2xl text-amber-400 font-semibold text-xs flex items-center gap-1.5 shadow-lg transition">
+        <i data-lucide="locate-fixed" class="w-4 h-4"></i>
+        <span class="hidden sm:inline">Kalibrasi</span>
+        <span id="calibStatusDot" class="w-2 h-2 rounded-full bg-rose-500"></span>
+      </button>
+
+      <button id="toggleHudBtn" title="Sembunyikan/Tampilkan Panel (Mode Full Peta)" class="hidden sm:flex p-2.5 bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700/80 rounded-2xl text-slate-200 shadow-lg transition">
+        <i data-lucide="maximize-2" id="toggleHudIcon" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- =========================================================
+       KONTROL ZOOM & POSISI DI SISI KANAN
+  ========================================================= -->
+  <div id="mapZoomControls" class="fixed right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
+    <button id="zoomInBtn" title="Perbesar (Zoom In)" class="w-11 h-11 bg-slate-900/90 hover:bg-slate-800 active:scale-95 backdrop-blur-md border border-slate-700/80 rounded-2xl flex items-center justify-center text-white shadow-lg transition">
+      <i data-lucide="plus" class="w-5 h-5"></i>
+    </button>
+    <button id="zoomOutBtn" title="Perkecil (Zoom Out)" class="w-11 h-11 bg-slate-900/90 hover:bg-slate-800 active:scale-95 backdrop-blur-md border border-slate-700/80 rounded-2xl flex items-center justify-center text-white shadow-lg transition">
+      <i data-lucide="minus" class="w-5 h-5"></i>
+    </button>
+    <button id="fitScreenBtn" title="Tampilan Full Layar / Fit Rute" class="w-11 h-11 bg-slate-900/90 hover:bg-slate-800 active:scale-95 backdrop-blur-md border border-slate-700/80 rounded-2xl flex items-center justify-center text-emerald-400 shadow-lg transition">
+      <i data-lucide="scan" class="w-5 h-5"></i>
+    </button>
+    <button id="centerGpsBtn" title="Pusatkan ke Lokasi Saya" class="w-11 h-11 bg-slate-900/90 hover:bg-slate-800 active:scale-95 backdrop-blur-md border border-slate-700/80 rounded-2xl flex items-center justify-center text-sky-400 shadow-lg transition">
+      <i data-lucide="navigation" class="w-5 h-5"></i>
+    </button>
+  </div>
+
+  <!-- =========================================================
+       BOTTOM PANEL: STATISTIK PERJALANAN, TRACKING & EKSPOR GPX
+  ========================================================= -->
+  <section id="bottomControlPanel" class="fixed bottom-3 left-3 right-3 z-20 max-w-2xl mx-auto transition-transform duration-300">
+    <div class="bg-slate-900/90 backdrop-blur-xl border border-slate-700/80 rounded-3xl p-3.5 sm:p-4 shadow-2xl">
+      
+      <!-- Indikator Native Android (Wake Lock & Auto-Save) -->
+      <div class="flex items-center justify-between text-[11px] text-slate-400 mb-2.5 px-1">
+        <div id="wakeLockIndicator" class="flex items-center gap-1.5 text-slate-400">
+          <span id="wakeLockDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+          <span id="wakeLockLabel">Layar Otomatis</span>
+        </div>
+        <div id="autoSaveIndicator" class="flex items-center gap-1 text-emerald-400/90">
+          <i data-lucide="database" class="w-3 h-3"></i>
+          <span id="autoSaveLabel">Sesi Tersimpan Lokal</span>
+        </div>
+      </div>
+
+      <!-- Baris Statistik Ringkas -->
+      <div class="grid grid-cols-4 gap-2 pb-3 mb-3 border-b border-slate-800 text-center">
+        <div class="bg-slate-950/60 rounded-xl p-2 border border-slate-800/80">
+          <div class="text-[10px] uppercase tracking-wider text-slate-400">Jarak</div>
+          <div id="statDistance" class="text-xs sm:text-sm font-bold font-mono-code text-white mt-0.5">0.00 km</div>
+        </div>
+        <div class="bg-slate-950/60 rounded-xl p-2 border border-slate-800/80">
+          <div class="text-[10px] uppercase tracking-wider text-slate-400">Durasi</div>
+          <div id="statDuration" class="text-xs sm:text-sm font-bold font-mono-code text-white mt-0.5">00:00:00</div>
+        </div>
+        <div class="bg-slate-950/60 rounded-xl p-2 border border-slate-800/80">
+          <div class="text-[10px] uppercase tracking-wider text-slate-400">Elevasi</div>
+          <div id="statElevation" class="text-xs sm:text-sm font-bold font-mono-code text-sky-400 mt-0.5">-- m</div>
+        </div>
+        <div class="bg-slate-950/60 rounded-xl p-2 border border-slate-800/80">
+          <div class="text-[10px] uppercase tracking-wider text-slate-400">Titik</div>
+          <div id="statPoints" class="text-xs sm:text-sm font-bold font-mono-code text-emerald-400 mt-0.5">0</div>
+        </div>
+      </div>
+
+      <!-- Tombol Kontrol Utama -->
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <!-- Mulai / Jeda Rekam -->
+        <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+          <button id="startPauseBtn" class="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-semibold text-xs sm:text-sm py-3 px-4 rounded-2xl shadow-lg shadow-emerald-950/50 transition">
+            <i data-lucide="play" id="startPauseIcon" class="w-4 h-4 fill-current"></i>
+            <span id="startPauseText">Mulai Rekam</span>
+          </button>
+
+          <button id="addWaypointBtn" title="Simpan Waypoint / Titik Tandai" class="p-3 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-2xl transition flex items-center gap-1.5 text-xs font-semibold">
+            <i data-lucide="map-pin" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Tandai</span>
+          </button>
+
+          <button id="resetTrackBtn" title="Reset Jejak" class="p-3 bg-slate-800 hover:bg-rose-950/60 border border-slate-700 hover:border-rose-500/40 text-slate-300 hover:text-rose-300 rounded-2xl transition">
+            <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <!-- Mode Simulasi & Ekspor GPX -->
+        <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <button id="toggleSimBtn" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-3 rounded-2xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 transition">
+            <i data-lucide="route" class="w-4 h-4"></i>
+            <span id="simBtnText">Simulasi GPS</span>
+          </button>
+
+          <button id="exportGpxBtn" class="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-3 rounded-2xl text-xs sm:text-sm font-semibold bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-950/50 transition">
+            <i data-lucide="download" class="w-4 h-4"></i>
+            <span>Ekspor GPX</span>
+          </button>
+
+          <button id="shareGpxBtn" title="Bagikan GPX ke WhatsApp / Telegram / Drive" class="p-3 rounded-2xl text-xs font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 transition flex items-center justify-center">
+            <i data-lucide="share-2" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       MODAL KALIBRASI / GEOREFERENCING PETA PDF (2 TITIK IKAT)
+  ========================================================= -->
+  <div id="calibrationModal" class="hidden fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl my-auto">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+            <i data-lucide="locate-fixed" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-base sm:text-lg font-bold text-white">Kalibrasi Koordinat Peta PDF</h2>
+            <p class="text-xs text-slate-400">Ikat 2 titik di peta PDF ke koordinat GPS (Lat, Lon)</p>
+          </div>
+        </div>
+        <button id="closeCalibModalBtn" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="space-y-4 mt-4 text-xs sm:text-sm">
+        <!-- TITIK IKAT A -->
+        <div class="bg-slate-950/70 border border-slate-800 rounded-2xl p-3.5">
+          <div class="flex items-center justify-between mb-2.5">
+            <span class="font-bold text-amber-400 flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded-full bg-amber-500 text-slate-950 inline-flex items-center justify-center text-xs font-extrabold">A</span>
+              Titik Ikat 1 (Kiri Atas / Referensi 1)
+            </span>
+            <button id="pickPointABtn" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1 transition">
+              <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
+              <span>Pilih di Peta</span>
+            </button>
+          </div>
+          <div class="text-[11px] text-slate-400 mb-2 font-mono-code" id="gcpAPixelLabel">Piksel PDF: Belum dipilih</div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Latitude (Lintang)</label>
+              <input type="number" step="any" id="gcpALat" placeholder="-6.200000" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono-code text-xs focus:outline-none focus:border-amber-400" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Longitude (Bujur)</label>
+              <input type="number" step="any" id="gcpALon" placeholder="106.816666" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono-code text-xs focus:outline-none focus:border-amber-400" />
+            </div>
+          </div>
+          <button id="useCurrentGpsForABtn" class="mt-2 text-[11px] text-sky-400 hover:text-sky-300 flex items-center gap-1 font-medium">
+            <i data-lucide="navigation" class="w-3 h-3"></i> Gunakan posisi GPS saya saat ini untuk Titik A
+          </button>
+        </div>
+
+        <!-- TITIK IKAT B -->
+        <div class="bg-slate-950/70 border border-slate-800 rounded-2xl p-3.5">
+          <div class="flex items-center justify-between mb-2.5">
+            <span class="font-bold text-emerald-400 flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded-full bg-emerald-500 text-slate-950 inline-flex items-center justify-center text-xs font-extrabold">B</span>
+              Titik Ikat 2 (Kanan Bawah / Referensi 2)
+            </span>
+            <button id="pickPointBBtn" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1 transition">
+              <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
+              <span>Pilih di Peta</span>
+            </button>
+          </div>
+          <div class="text-[11px] text-slate-400 mb-2 font-mono-code" id="gcpBPixelLabel">Piksel PDF: Belum dipilih</div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Latitude (Lintang)</label>
+              <input type="number" step="any" id="gcpBLat" placeholder="-6.210000" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono-code text-xs focus:outline-none focus:border-emerald-400" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1">Longitude (Bujur)</label>
+              <input type="number" step="any" id="gcpBLon" placeholder="106.826666" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono-code text-xs focus:outline-none focus:border-emerald-400" />
+            </div>
+          </div>
+          <button id="useCurrentGpsForBBtn" class="mt-2 text-[11px] text-sky-400 hover:text-sky-300 flex items-center gap-1 font-medium">
+            <i data-lucide="navigation" class="w-3 h-3"></i> Gunakan posisi GPS saya saat ini untuk Titik B
+          </button>
+        </div>
+
+        <!-- Opsi Kalibrasi Cepat Otomatis di Sekitar Lokasi GPS Saat Ini -->
+        <div class="bg-sky-950/30 border border-sky-800/50 rounded-2xl p-3 flex items-center justify-between gap-3">
+          <div class="text-xs text-sky-200">
+            <span class="font-semibold block">Kalibrasi Cepat Area Sekitar</span>
+            <span class="text-[11px] text-sky-300/80">Pasang batas peta otomatis (±500m) di sekitar lokasi GPS Anda sekarang.</span>
+          </div>
+          <button id="autoCalibrateAroundGpsBtn" class="px-3 py-2 bg-sky-600 hover:bg-sky-500 text-white font-semibold rounded-xl text-xs shrink-0 transition">
+            Kalibrasi Cepat
+          </button>
+        </div>
+      </div>
+
+      <div class="mt-5 flex items-center justify-end gap-2">
+        <button id="saveCalibrationBtn" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-2xl text-sm shadow-lg transition">
+          Terapkan Kalibrasi Peta
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       MODAL TAMBAH WAYPOINT
+  ========================================================= -->
+  <div id="waypointModal" class="hidden fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-sm w-full p-5 shadow-2xl">
+      <h3 class="text-base font-bold text-white flex items-center gap-2 mb-3">
+        <i data-lucide="map-pin" class="w-5 h-5 text-amber-400"></i>
+        Simpan Titik Waypoint
+      </h3>
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block text-slate-400 mb-1">Nama Titik</label>
+          <input type="text" id="wptNameInput" placeholder="Contoh: Patok Batas 01 / Pos Jaga" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-amber-400" />
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Catatan (Opsional)</label>
+          <input type="text" id="wptDescInput" placeholder="Keterangan tambahan..." class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-amber-400" />
+        </div>
+      </div>
+      <div class="mt-4 flex gap-2">
+        <button id="cancelWptBtn" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold">Batal</button>
+        <button id="confirmWptBtn" class="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold">Simpan Titik</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       MODAL INSTALL APLIKASI ANDROID (PWA)
+  ========================================================= -->
+  <div id="installAndroidModal" class="hidden fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl my-auto">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+            <i data-lucide="smartphone" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-white">Install Aplikasi di Android</h2>
+            <p class="text-xs text-slate-400">Jalankan full-screen tanpa address bar browser</p>
+          </div>
+        </div>
+        <button id="closeInstallAndroidBtn" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="mt-4 space-y-3.5 text-xs sm:text-sm text-slate-300">
+        <!-- Tombol Install Otomatis jika event beforeinstallprompt tersedia -->
+        <div id="nativePromptBox" class="hidden bg-emerald-950/50 border border-emerald-500/40 rounded-2xl p-4 text-center">
+          <p class="text-xs text-emerald-200 mb-3">Perangkat Android Anda mendukung instalasi langsung 1-klik ke layar utama!</p>
+          <button id="triggerNativeInstallBtn" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 transition">
+            <i data-lucide="download-cloud" class="w-5 h-5"></i>
+            <span>Install Aplikasi Sekarang</span>
+          </button>
+        </div>
+
+        <!-- Panduan Visual 3 Langkah Chrome Android -->
+        <div class="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3">
+          <div class="font-semibold text-white text-xs uppercase tracking-wider text-emerald-400">Cara Install Manual di Chrome Android:</div>
+          <div class="flex items-start gap-3">
+            <span class="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">1</span>
+            <p class="text-xs leading-relaxed">Buka halaman aplikasi ini menggunakan browser <strong>Google Chrome</strong> di HP Android Anda.</p>
+          </div>
+          <div class="flex items-start gap-3">
+            <span class="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">2</span>
+            <p class="text-xs leading-relaxed">Ketuk ikon <strong>Menu Titik Tiga (⋮)</strong> di pojok kanan atas browser Chrome.</p>
+          </div>
+          <div class="flex items-start gap-3">
+            <span class="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">3</span>
+            <p class="text-xs leading-relaxed">Pilih <strong>"Install aplikasi"</strong> atau <strong>"Tambahkan ke layar utama"</strong>, lalu konfirmasi <strong>Install</strong>. Ikon <strong>PetaTrack</strong> akan muncul di laci aplikasi Android Anda.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       MODAL APK BUILDER (SOURCE CODE & KONFIGURASI SIAP BUILD APK)
+  ========================================================= -->
+  <div id="apkBuilderModal" class="hidden fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-xl w-full p-5 sm:p-6 shadow-2xl my-auto">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
+            <i data-lucide="package" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-base sm:text-lg font-bold text-white">APK Builder (Paket Android)</h2>
+            <p class="text-xs text-slate-400">Unduh source code & konfigurasi siap kompilasi menjadi file .APK</p>
+          </div>
+        </div>
+        <button id="closeApkBuilderBtn" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="mt-4 space-y-4 text-xs sm:text-sm">
+        <!-- Tombol Unduh File Paket -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <button id="downloadFullHtmlBtn" class="p-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-semibold text-xs flex items-center justify-center gap-2 shadow-lg transition">
+            <i data-lucide="file-code" class="w-4 h-4 shrink-0"></i>
+            <span>1. Download index.html Lengkap</span>
+          </button>
+          <button id="downloadCapacitorPkgBtn" class="p-3.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-indigo-300 rounded-2xl font-semibold text-xs flex items-center justify-center gap-2 transition">
+            <i data-lucide="settings" class="w-4 h-4 shrink-0"></i>
+            <span>2. Download Config Capacitor & Manifest</span>
+          </button>
+        </div>
+
+        <!-- Opsi Build 1: PWABuilder (Tanpa Android Studio) -->
+        <div class="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-2">
+          <div class="font-bold text-emerald-400 text-xs flex items-center gap-1.5">
+            <i data-lucide="zap" class="w-4 h-4"></i>
+            Opsi 1: Buat File .APK Online (Tanpa Coding / Tanpa Android Studio)
+          </div>
+          <ol class="list-decimal list-inside text-xs text-slate-300 space-y-1.5 leading-relaxed">
+            <li>Unduh file <code class="text-indigo-300 font-mono-code">index.html</code> di atas, lalu upload ke hosting gratis seperti <strong>GitHub Pages</strong>, <strong>Vercel</strong>, atau <strong>Netlify</strong>.</li>
+            <li>Buka situs <strong>pwabuilder.com</strong>, masukkan URL aplikasi Anda, lalu klik <strong>Package for Stores → Android</strong> untuk mengunduh file <code class="text-emerald-300 font-mono-code">.apk</code> siap install.</li>
+          </ol>
+        </div>
+
+        <!-- Opsi Build 2: Capacitor CLI -->
+        <div class="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-2">
+          <div class="font-bold text-sky-400 text-xs flex items-center gap-1.5">
+            <i data-lucide="terminal" class="w-4 h-4"></i>
+            Opsi 2: Build APK Native via Capacitor CLI
+          </div>
+          <pre class="bg-slate-900 border border-slate-800 rounded-xl p-3 text-[11px] font-mono-code text-slate-200 overflow-x-auto leading-relaxed">mkdir petatrack-android && cd petatrack-android
+npm init -y && npm install @capacitor/core @capacitor/cli @capacitor/android
+npx cap init "PetaTrack PDF" "id.petatrack.gps" --web-dir=www
+# Salin index.html ke folder www/ dan timpa AndroidManifest.xml
+npx cap add android && npx cap sync
+cd android && ./gradlew assembleDebug</pre>
+          <p class="text-[11px] text-slate-400">File APK hasil build tersedia di: <code class="text-slate-300 font-mono-code">android/app/build/outputs/apk/debug/app-debug.apk</code></p>
+        </div>
+      </div>
+    </div>
+  </div>
+       TOAST NOTIFICATION (PENGGANTI ALERT)
+  ========================================================= -->
+  <div id="toastContainer" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 pointer-events-none w-[90%] max-w-md"></div>
+
+  <!-- =========================================================
+       JAVASCRIPT LOGIC
+  ========================================================= -->
+  <script>
+    // Inisialisasi Ikon Lucide
+    lucide.createIcons();
+
+    // Konfigurasi Worker PDF.js
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    // =========================================================
+    // STATE APLIKASI
+    // =========================================================
+    const state = {
+      // Mode Peta Aktif: 'google' (Peta Jalan Google) atau 'pdf' (Peta PDF Kustom)
+      mapMode: 'google',
+
+      // State Leaflet untuk Google Maps Jalan & Satelit
+      leaflet: {
+        map: null,
+        roadLayer: null,
+        hybridLayer: null,
+        isSatellite: false,
+        userMarker: null,
+        accuracyCircle: null,
+        trackPolyline: null,
+        waypointLayerGroup: null,
+        hasCenteredInitialGps: false
+      },
+
+      // Offscreen canvas beresolusi tinggi tempat halaman PDF dirender
+      pdfCanvas: null,
+      pdfWidth: 0,
+      pdfHeight: 0,
+      pdfFileName: 'peta_lapangan.pdf',
+
+      // Transformasi kamera (Pan & Zoom) pada layar PDF
+      view: {
+        scale: 1,
+        offsetX: 0,
+        offsetY: 0,
+        isDragging: false,
+        lastX: 0,
+        lastY: 0,
+        initialPinchDist: null,
+        initialScale: 1
+      },
+
+      // Kalibrasi Georeferencing (2 Ground Control Points: A & B)
+      calibration: {
+        isCalibrated: false,
+        pickingTarget: null, // 'A' | 'B' | null
+        pointA: { px: null, py: null, lat: null, lon: null },
+        pointB: { px: null, py: null, lat: null, lon: null }
+      },
+
+      // Status GPS Real-time (Default fallback area Stabat / Medan, Sumatera Utara)
+      gps: {
+        watchId: null,
+        currentLat: null,
+        currentLon: null,
+        defaultLat: 3.761500,
+        defaultLon: 98.451200,
+        accuracy: null,
+        altitude: null,
+        speed: null,
+        heading: null,
+        lastUpdate: null,
+        isSimulating: false,
+        simInterval: null,
+        simAngle: 0
+      },
+
+      // Perekaman Track & Waypoints untuk GPX
+      tracking: {
+        isRecording: false,
+        startTime: null,
+        elapsedMs: 0,
+        timerInterval: null,
+        points: [],     // Array of { lat, lon, ele, time, accuracy }
+        waypoints: [],  // Array of { name, desc, lat, lon, ele, time }
+        totalDistanceMeters: 0
+      },
+
+      hudMinimized: false
+    };
+
+    // =========================================================
+    // PWA SETUP: DYNAMIC ICON, MANIFEST.JSON & SERVICE WORKER
+    // =========================================================
+    let deferredInstallPrompt = null;
+
+    function setupPwaAssets() {
+      try {
+        // 1. Gambar Ikon Aplikasi Adaptive HD (512x512) secara dinamis via Canvas
+        const iconCanvas = document.createElement('canvas');
+        iconCanvas.width = 512;
+        iconCanvas.height = 512;
+        const ictx = iconCanvas.getContext('2d');
+
+        // Background Gradient Dark Slate -> Emerald
+        const grad = ictx.createLinearGradient(0, 0, 512, 512);
+        grad.addColorStop(0, '#0f172a');
+        grad.addColorStop(1, '#064e3b');
+        ictx.fillStyle = grad;
+        ictx.fillRect(0, 0, 512, 512);
+
+        // Grid Peta Dekoratif
+        ictx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
+        ictx.lineWidth = 4;
+        for (let i = 64; i < 512; i += 96) {
+          ictx.beginPath(); ictx.moveTo(i, 0); ictx.lineTo(i, 512); ictx.stroke();
+          ictx.beginPath(); ictx.moveTo(0, i); ictx.lineTo(512, i); ictx.stroke();
+        }
+
+        // Garis Rute GPS
+        ictx.strokeStyle = '#38bdf8';
+        ictx.lineWidth = 18;
+        ictx.lineCap = 'round';
+        ictx.lineJoin = 'round';
+        ictx.beginPath();
+        ictx.moveTo(110, 380);
+        ictx.lineTo(200, 270);
+        ictx.lineTo(310, 310);
+        ictx.lineTo(395, 165);
+        ictx.stroke();
+
+        // Pin Lokasi GPS Utama
+        ictx.fillStyle = '#10b981';
+        ictx.beginPath();
+        ictx.arc(395, 165, 42, 0, Math.PI * 2);
+        ictx.fill();
+        ictx.lineWidth = 10;
+        ictx.strokeStyle = '#ffffff';
+        ictx.stroke();
+
+        const iconDataUrl = iconCanvas.toDataURL('image/png');
+        document.getElementById('pwaIconLink').href = iconDataUrl;
+        document.getElementById('pwaAppleIconLink').href = iconDataUrl;
+
+        // 2. Generate Web App Manifest secara dinamis via Blob URL
+        const manifestObj = {
+          name: 'PetaTrack PDF - Pelacak GPS & Ekspor GPX',
+          short_name: 'PetaTrack',
+          description: 'Aplikasi Pelacak GPS Akurat dengan Peta Jalan Google, Peta PDF Full-Screen, dan Ekspor GPX.',
+          start_url: window.location.href,
+          display: 'standalone',
+          orientation: 'portrait',
+          theme_color: '#0f172a',
+          background_color: '#0f172a',
+          icons: [
+            {
+              src: iconDataUrl,
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any maskable'
+            }
+          ]
+        };
+        const manifestBlob = new Blob([JSON.stringify(manifestObj)], { type: 'application/manifest+json' });
+        document.getElementById('pwaManifestLink').href = URL.createObjectURL(manifestBlob);
+
+        // 3. Registrasi Service Worker Dinamis (jika protokol mendukung)
+        if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost')) {
+          const swCode = `
+            const CACHE_NAME = 'petatrack-v1';
+            self.addEventListener('install', (e) => self.skipWaiting());
+            self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+            self.addEventListener('fetch', (e) => {
+              e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+            });
+          `;
+          const swBlob = new Blob([swCode], { type: 'application/javascript' });
+          navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(() => {});
+        }
+      } catch (err) {
+        console.warn('PWA asset setup skipped:', err);
+      }
+    }
+
+    // Tangkap event beforeinstallprompt di Android Chrome
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      document.getElementById('nativePromptBox').classList.remove('hidden');
+      showToast('Aplikasi siap di-install ke layar utama Android!', 'success');
+    });
+
+    window.addEventListener('appinstalled', () => {
+      deferredInstallPrompt = null;
+      document.getElementById('nativePromptBox').classList.add('hidden');
+      showToast('PetaTrack PDF berhasil terpasang di Android!', 'success');
+    });
+
+    // =========================================================
+    // NATIVE ANDROID: WAKE LOCK API (LAYAR TETAP MENYALA)
+    // =========================================================
+    let wakeLockSentinel = null;
+
+    async function requestScreenWakeLock() {
+      if (!('wakeLock' in navigator)) return;
+      try {
+        wakeLockSentinel = await navigator.wakeLock.request('screen');
+        document.getElementById('wakeLockDot').className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+        document.getElementById('wakeLockLabel').textContent = 'Layar Tetap Menyala';
+        document.getElementById('wakeLockIndicator').classList.add('text-emerald-400');
+
+        wakeLockSentinel.addEventListener('release', () => {
+          document.getElementById('wakeLockDot').className = 'w-2 h-2 rounded-full bg-slate-500';
+          document.getElementById('wakeLockLabel').textContent = 'Layar Otomatis';
+          document.getElementById('wakeLockIndicator').classList.remove('text-emerald-400');
+        });
+      } catch (err) {
+        console.warn('WakeLock gagal:', err);
+      }
+    }
+
+    async function releaseScreenWakeLock() {
+      if (wakeLockSentinel) {
+        await wakeLockSentinel.release();
+        wakeLockSentinel = null;
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && state.tracking.isRecording) {
+        requestScreenWakeLock();
+      }
+    });
+
+    // =========================================================
+    // AUTO-SAVE & RESTORE SESI KE MEMORI HP (LOCALSTORAGE)
+    // =========================================================
+    const STORAGE_KEY = 'petatrack_android_session_v1';
+
+    function saveSessionToLocal() {
+      try {
+        const payload = {
+          points: state.tracking.points,
+          waypoints: state.tracking.waypoints,
+          totalDistanceMeters: state.tracking.totalDistanceMeters,
+          elapsedMs: state.tracking.elapsedMs,
+          calibration: {
+            isCalibrated: state.calibration.isCalibrated,
+            pointA: state.calibration.pointA,
+            pointB: state.calibration.pointB
+          }
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        const label = document.getElementById('autoSaveLabel');
+        if (label) {
+          label.textContent = `Tersimpan (${state.tracking.points.length} titik)`;
+        }
+      } catch (e) {
+        console.warn('Gagal menyimpan sesi lokal:', e);
+      }
+    }
+
+    function loadSessionFromLocal() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+
+        if (Array.isArray(data.points)) state.tracking.points = data.points;
+        if (Array.isArray(data.waypoints)) state.tracking.waypoints = data.waypoints;
+        if (typeof data.totalDistanceMeters === 'number') state.tracking.totalDistanceMeters = data.totalDistanceMeters;
+        if (typeof data.elapsedMs === 'number') {
+          state.tracking.elapsedMs = data.elapsedMs;
+          document.getElementById('statDuration').textContent = formatDuration(data.elapsedMs);
+        }
+        if (data.calibration && data.calibration.isCalibrated) {
+          state.calibration.isCalibrated = true;
+          state.calibration.pointA = data.calibration.pointA;
+          state.calibration.pointB = data.calibration.pointB;
+          document.getElementById('calibStatusDot').classList.remove('bg-rose-500');
+          document.getElementById('calibStatusDot').classList.add('bg-emerald-400');
+        }
+
+        updateTrackingStatsUI();
+        updateLeafletLayers();
+        rebuildLeafletWaypoints();
+        if (state.tracking.points.length > 0 || state.tracking.waypoints.length > 0) {
+          showToast(`Memulihkan ${state.tracking.points.length} titik & ${state.tracking.waypoints.length} waypoint terakhir.`, 'info');
+        }
+      } catch (e) {
+        console.warn('Gagal memulihkan sesi lokal:', e);
+      }
+    }
+
+    // Referensi Elemen DOM
+    const viewportContainer = document.getElementById('viewportContainer');
+    const googleMapContainer = document.getElementById('googleMapContainer');
+    const pdfMapWrapper = document.getElementById('pdfMapWrapper');
+    const mapCanvas = document.getElementById('mapCanvas');
+    const ctx = mapCanvas.getContext('2d');
+    const emptyStateOverlay = document.getElementById('emptyStateOverlay');
+    const pdfFileInput = document.getElementById('pdfFileInput');
+
+    // =========================================================
+    // INISIALISASI LEAFLET GOOGLE JALAN & SATELIT
+    // =========================================================
+    function initGoogleLeafletMap() {
+      const initialLat = state.gps.defaultLat;
+      const initialLon = state.gps.defaultLon;
+
+      const map = L.map('googleMapContainer', {
+        center: [initialLat, initialLon],
+        zoom: 16,
+        zoomControl: false // Kita gunakan tombol zoom kustom di sebelah kanan
+      });
+
+      // Layer 1: Google Maps Jalan (Road Map)
+      const roadLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        maxZoom: 21,
+        attribution: 'Peta Jalan &copy; Google'
+      });
+
+      // Layer 2: Google Maps Satelit + Label Jalan (Hybrid)
+      const hybridLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        maxZoom: 21,
+        attribution: 'Citra Satelit &copy; Google'
+      });
+
+      roadLayer.addTo(map);
+
+      // Polyline Jejak Rute pada Google Map
+      const trackPolyline = L.polyline([], {
+        color: '#0284c7',
+        weight: 5,
+        opacity: 0.92,
+        lineJoin: 'round',
+        lineCap: 'round'
+      }).addTo(map);
+
+      // Layer Group untuk Waypoints
+      const waypointLayerGroup = L.layerGroup().addTo(map);
+
+      state.leaflet.map = map;
+      state.leaflet.roadLayer = roadLayer;
+      state.leaflet.hybridLayer = hybridLayer;
+      state.leaflet.trackPolyline = trackPolyline;
+      state.leaflet.waypointLayerGroup = waypointLayerGroup;
+    }
+
+    // Sinkronkan posisi GPS, jejak rute, dan waypoint ke peta Google Leaflet
+    function updateLeafletLayers() {
+      const { map, trackPolyline, waypointLayerGroup } = state.leaflet;
+      if (!map) return;
+
+      // 1. Update Marker Posisi Pengguna & Lingkaran Akurasi
+      if (state.gps.currentLat !== null && state.gps.currentLon !== null) {
+        const latlng = [state.gps.currentLat, state.gps.currentLon];
+        const acc = state.gps.accuracy || 10;
+
+        if (!state.leaflet.userMarker) {
+          const pulseIcon = L.divIcon({
+            className: '',
+            html: `<div class="gps-pulse-marker"><div class="gps-pulse-ring"></div><div class="gps-pulse-core"></div></div>`,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          });
+          state.leaflet.userMarker = L.marker(latlng, { icon: pulseIcon, zIndexOffset: 1000 }).addTo(map);
+          state.leaflet.accuracyCircle = L.circle(latlng, {
+            radius: acc,
+            color: '#38bdf8',
+            fillColor: '#0284c7',
+            fillOpacity: 0.15,
+            weight: 1.5
+          }).addTo(map);
+        } else {
+          state.leaflet.userMarker.setLatLng(latlng);
+          state.leaflet.accuracyCircle.setLatLng(latlng);
+          state.leaflet.accuracyCircle.setRadius(acc);
+        }
+
+        // Pusatkan peta otomatis pada fix GPS pertama kali
+        if (!state.leaflet.hasCenteredInitialGps) {
+          map.setView(latlng, 17);
+          state.leaflet.hasCenteredInitialGps = true;
+        }
+      }
+
+      // 2. Update Garis Jalur Tracking
+      const latLngs = state.tracking.points.map((pt) => [pt.lat, pt.lon]);
+      trackPolyline.setLatLngs(latLngs);
+    }
+
+    function rebuildLeafletWaypoints() {
+      const { waypointLayerGroup } = state.leaflet;
+      if (!waypointLayerGroup) return;
+      waypointLayerGroup.clearLayers();
+
+      for (const wpt of state.tracking.waypoints) {
+        const wptIcon = L.divIcon({
+          className: '',
+          html: `<div class="flex flex-col items-center -translate-y-4">
+                  <div class="wpt-leaflet-label mb-1">${escapeHtml(wpt.name)}</div>
+                  <div class="w-4 h-4 rounded-full bg-amber-400 border-2 border-slate-950 shadow-md"></div>
+                 </div>`,
+          iconSize: [80, 36],
+          iconAnchor: [40, 28]
+        });
+        L.marker([wpt.lat, wpt.lon], { icon: wptIcon }).addTo(waypointLayerGroup);
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // =========================================================
+    // PENGALIH MODE PETA (GOOGLE JALAN <-> PETA PDF)
+    // =========================================================
+    function setMapMode(mode) {
+      state.mapMode = mode;
+      const modeGoogleBtn = document.getElementById('modeGoogleBtn');
+      const modePdfBtn = document.getElementById('modePdfBtn');
+      const toggleSatelliteBtn = document.getElementById('toggleSatelliteBtn');
+      const openCalibModalBtn = document.getElementById('openCalibModalBtn');
+
+      if (mode === 'google') {
+        googleMapContainer.classList.remove('hidden');
+        pdfMapWrapper.classList.add('hidden');
+
+        modeGoogleBtn.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 bg-emerald-600 text-white shadow transition';
+        modePdfBtn.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 text-slate-300 hover:text-white hover:bg-slate-800 transition';
+
+        toggleSatelliteBtn.classList.remove('hidden');
+        openCalibModalBtn.classList.add('hidden');
+
+        if (state.leaflet.map) {
+          setTimeout(() => {
+            state.leaflet.map.invalidateSize();
+            updateLeafletLayers();
+          }, 50);
+        }
+      } else {
+        googleMapContainer.classList.add('hidden');
+        pdfMapWrapper.classList.remove('hidden');
+
+        modePdfBtn.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 bg-emerald-600 text-white shadow transition';
+        modeGoogleBtn.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 text-slate-300 hover:text-white hover:bg-slate-800 transition';
+
+        toggleSatelliteBtn.classList.add('hidden');
+        openCalibModalBtn.classList.remove('hidden');
+
+        resizeMainCanvas();
+        if (state.pdfCanvas) {
+          emptyStateOverlay.classList.add('hidden');
+          fitPdfToScreen();
+        } else {
+          emptyStateOverlay.classList.remove('hidden', 'opacity-0', 'pointer-events-none');
+        }
+      }
+    }
+
+    document.getElementById('modeGoogleBtn').addEventListener('click', () => setMapMode('google'));
+    document.getElementById('modePdfBtn').addEventListener('click', () => setMapMode('pdf'));
+    document.getElementById('backToGoogleMapBtn').addEventListener('click', () => setMapMode('google'));
+
+    // Toggle Peta Jalan vs Satelit Google
+    document.getElementById('toggleSatelliteBtn').addEventListener('click', () => {
+      const { map, roadLayer, hybridLayer } = state.leaflet;
+      if (!map) return;
+
+      state.leaflet.isSatellite = !state.leaflet.isSatellite;
+      const btn = document.getElementById('toggleSatelliteBtn');
+      const label = document.getElementById('satBtnLabel');
+
+      if (state.leaflet.isSatellite) {
+        map.removeLayer(roadLayer);
+        hybridLayer.addTo(map);
+        btn.classList.add('bg-sky-600', 'text-white');
+        btn.classList.remove('text-sky-400');
+        label.textContent = 'Peta Jalan';
+        showToast('Tampilan Google Satelit (Hybrid) aktif', 'info');
+      } else {
+        map.removeLayer(hybridLayer);
+        roadLayer.addTo(map);
+        btn.classList.remove('bg-sky-600', 'text-white');
+        btn.classList.add('text-sky-400');
+        label.textContent = 'Satelit';
+        showToast('Tampilan Google Peta Jalan aktif', 'info');
+      }
+    });
+
+    // =========================================================
+    // FUNGSI NOTIFIKASI TOAST (TANPA ALERT)
+    // =========================================================
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      const colors = {
+        info: 'bg-slate-900/95 border-slate-700 text-slate-100',
+        success: 'bg-emerald-950/95 border-emerald-500/60 text-emerald-200',
+        warning: 'bg-amber-950/95 border-amber-500/60 text-amber-200',
+        error: 'bg-rose-950/95 border-rose-500/60 text-rose-200'
+      };
+      toast.className = `${colors[type] || colors.info} backdrop-blur-md border px-4 py-2.5 rounded-2xl shadow-2xl text-xs sm:text-sm font-medium transition-all duration-300 transform translate-y-0 opacity-100 text-center`;
+      toast.textContent = message;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', '-translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3200);
+    }
+
+    // =========================================================
+    // PENYESUAIAN UKURAN KANVAS UTAMA (RESPONSIVE FULL-SCREEN)
+    // =========================================================
+    function resizeMainCanvas() {
+      const rect = viewportContainer.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      mapCanvas.width = rect.width * dpr;
+      mapCanvas.height = rect.height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      renderScene();
+    }
+    window.addEventListener('resize', () => {
+      resizeMainCanvas();
+      if (state.leaflet.map) {
+        state.leaflet.map.invalidateSize();
+      }
+    });
+
+    // Zoom dengan Scroll Mouse
+    viewportContainer.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
+      zoomAtPoint(e.clientX, e.clientY, zoomFactor);
+    }, { passive: false });
+
+    // Touch Events untuk HP (Pan & Pinch-to-Zoom)
+    viewportContainer.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        state.view.isDragging = true;
+        state.view.lastX = e.touches[0].clientX;
+        state.view.lastY = e.touches[0].clientY;
+        pointerDownPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      } else if (e.touches.length === 2) {
+        state.view.isDragging = false;
+        state.view.initialPinchDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        state.view.initialScale = state.view.scale;
+      }
+    }, { passive: false });
+
+    viewportContainer.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1 && state.view.isDragging) {
+        const dx = e.touches[0].clientX - state.view.lastX;
+        const dy = e.touches[0].clientY - state.view.lastY;
+        state.view.offsetX += dx;
+        state.view.offsetY += dy;
+        state.view.lastX = e.touches[0].clientX;
+        state.view.lastY = e.touches[0].clientY;
+        renderScene();
+      } else if (e.touches.length === 2 && state.view.initialPinchDist) {
+        const currentDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        const targetScale = state.view.initialScale * (currentDist / state.view.initialPinchDist);
+        const factor = targetScale / state.view.scale;
+        zoomAtPoint(midX, midY, factor);
+      }
+    }, { passive: false });
+
+    viewportContainer.addEventListener('touchend', (e) => {
+      if (e.touches.length === 0) {
+        if (state.view.isDragging && e.changedTouches.length === 1) {
+          const t = e.changedTouches[0];
+          const moveDist = Math.hypot(t.clientX - pointerDownPos.x, t.clientY - pointerDownPos.y);
+          if (moveDist < 8) {
+            handleCanvasTap(t.clientX, t.clientY);
+          }
+        }
+        state.view.isDragging = false;
+        state.view.initialPinchDist = null;
+      }
+    });
+
+    function zoomAtPoint(clientX, clientY, factor) {
+      const rect = viewportContainer.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+
+      const newScale = Math.min(Math.max(state.view.scale * factor, 0.1), 15);
+      const actualFactor = newScale / state.view.scale;
+
+      state.view.offsetX = x - (x - state.view.offsetX) * actualFactor;
+      state.view.offsetY = y - (y - state.view.offsetY) * actualFactor;
+      state.view.scale = newScale;
+      renderScene();
+    }
+
+    // Tombol Kontrol Zoom Kanan
+    document.getElementById('zoomInBtn').addEventListener('click', () => {
+      const rect = viewportContainer.getBoundingClientRect();
+      zoomAtPoint(rect.width / 2, rect.height / 2, 1.3);
+    });
+    document.getElementById('zoomOutBtn').addEventListener('click', () => {
+      const rect = viewportContainer.getBoundingClientRect();
+      zoomAtPoint(rect.width / 2, rect.height / 2, 0.75);
+    });
+    document.getElementById('fitScreenBtn').addEventListener('click', () => {
+      fitPdfToScreen();
+      showToast('Peta disesuaikan penuh ke layar', 'info');
+    });
+    document.getElementById('centerGpsBtn').addEventListener('click', () => {
+      if (state.gps.currentLat === null) {
+        showToast('Lokasi GPS belum terdeteksi.', 'warning');
+        return;
+      }
+      if (!state.calibration.isCalibrated) {
+        showToast('Kalibrasi peta PDF terlebih dahulu agar posisi dapat dipusatkan.', 'warning');
+        return;
+      }
+      const pdfPt = gpsToPdfPixel(state.gps.currentLat, state.gps.currentLon);
+      if (pdfPt) {
+        const rect = viewportContainer.getBoundingClientRect();
+        state.view.offsetX = rect.width / 2 - pdfPt.px * state.view.scale;
+        state.view.offsetY = rect.height / 2 - pdfPt.py * state.view.scale;
+        renderScene();
+      }
+    });
+
+    // =========================================================
+    // LOGIKA KALIBRASI / GEOREFERENCING 2 TITIK IKAT
+    // =========================================================
+    const calibrationModal = document.getElementById('calibrationModal');
+    const calibrationBanner = document.getElementById('calibrationBanner');
+
+    function openCalibrationModal() {
+      // Sinkronkan input dengan data state saat ini
+      const { pointA, pointB } = state.calibration;
+      if (pointA.px !== null) {
+        document.getElementById('gcpAPixelLabel').textContent = `Piksel PDF: (${Math.round(pointA.px)}, ${Math.round(pointA.py)})`;
+      }
+      if (pointA.lat !== null) document.getElementById('gcpALat').value = pointA.lat;
+      if (pointA.lon !== null) document.getElementById('gcpALon').value = pointA.lon;
+
+      if (pointB.px !== null) {
+        document.getElementById('gcpBPixelLabel').textContent = `Piksel PDF: (${Math.round(pointB.px)}, ${Math.round(pointB.py)})`;
+      }
+      if (pointB.lat !== null) document.getElementById('gcpBLat').value = pointB.lat;
+      if (pointB.lon !== null) document.getElementById('gcpBLon').value = pointB.lon;
+
+      calibrationModal.classList.remove('hidden');
+    }
+
+    document.getElementById('openCalibModalBtn').addEventListener('click', openCalibrationModal);
+    document.getElementById('closeCalibModalBtn').addEventListener('click', () => {
+      calibrationModal.classList.add('hidden');
+    });
+
+    function startPickingPoint(target) {
+      if (!state.pdfCanvas) {
+        showToast('Unggah file peta PDF terlebih dahulu.', 'warning');
+        return;
+      }
+      state.calibration.pickingTarget = target;
+      calibrationModal.classList.add('hidden');
+      calibrationBanner.classList.remove('hidden');
+      document.getElementById('calibrationBannerText').textContent =
+        `Ketuk pada peta PDF untuk menandai Titik Ikat ${target}`;
+    }
+
+    document.getElementById('pickPointABtn').addEventListener('click', () => startPickingPoint('A'));
+    document.getElementById('pickPointBBtn').addEventListener('click', () => startPickingPoint('B'));
+    document.getElementById('cancelCalibStepBtn').addEventListener('click', () => {
+      state.calibration.pickingTarget = null;
+      calibrationBanner.classList.add('hidden');
+      openCalibrationModal();
+    });
+
+    function handleCanvasTap(clientX, clientY) {
+      const target = state.calibration.pickingTarget;
+      if (!target) return;
+
+      const rect = viewportContainer.getBoundingClientRect();
+      const { px, py } = screenToPdfPixel(clientX - rect.left, clientY - rect.top);
+
+      if (px < 0 || py < 0 || px > state.pdfWidth || py > state.pdfHeight) {
+        showToast('Ketuk di dalam area gambar peta PDF!', 'warning');
+        return;
+      }
+
+      if (target === 'A') {
+        state.calibration.pointA.px = px;
+        state.calibration.pointA.py = py;
+      } else {
+        state.calibration.pointB.px = px;
+        state.calibration.pointB.py = py;
+      }
+
+      state.calibration.pickingTarget = null;
+      calibrationBanner.classList.add('hidden');
+      renderScene();
+      openCalibrationModal();
+      showToast(`Titik ${target} berhasil ditandai pada peta.`, 'success');
+    }
+
+    // Ambil GPS saat ini untuk Titik A atau B
+    document.getElementById('useCurrentGpsForABtn').addEventListener('click', () => {
+      if (state.gps.currentLat === null) {
+        showToast('Menunggu sinyal GPS...', 'warning');
+        return;
+      }
+      document.getElementById('gcpALat').value = state.gps.currentLat.toFixed(6);
+      document.getElementById('gcpALon').value = state.gps.currentLon.toFixed(6);
+    });
+
+    document.getElementById('useCurrentGpsForBBtn').addEventListener('click', () => {
+      if (state.gps.currentLat === null) {
+        showToast('Menunggu sinyal GPS...', 'warning');
+        return;
+      }
+      document.getElementById('gcpBLat').value = state.gps.currentLat.toFixed(6);
+      document.getElementById('gcpBLon').value = state.gps.currentLon.toFixed(6);
+    });
+
+    // Kalibrasi Cepat Sekitar GPS Saat Ini
+    document.getElementById('autoCalibrateAroundGpsBtn').addEventListener('click', () => {
+      if (!state.pdfCanvas) return;
+      const lat = state.gps.currentLat || 3.761500;
+      const lon = state.gps.currentLon || 98.451200;
+
+      state.calibration.pointA = {
+        px: state.pdfWidth * 0.1,
+        py: state.pdfHeight * 0.1,
+        lat: +(lat + 0.0045).toFixed(6),
+        lon: +(lon - 0.0045).toFixed(6)
+      };
+      state.calibration.pointB = {
+        px: state.pdfWidth * 0.9,
+        py: state.pdfHeight * 0.9,
+        lat: +(lat - 0.0045).toFixed(6),
+        lon: +(lon + 0.0045).toFixed(6)
+      };
+      openCalibrationModal();
+      renderScene();
+      showToast('Koordinat batas area sekitar GPS berhasil diisi!', 'info');
+    });
+
+    document.getElementById('saveCalibrationBtn').addEventListener('click', () => {
+      const aLat = parseFloat(document.getElementById('gcpALat').value);
+      const aLon = parseFloat(document.getElementById('gcpALon').value);
+      const bLat = parseFloat(document.getElementById('gcpBLat').value);
+      const bLon = parseFloat(document.getElementById('gcpBLon').value);
+
+      const { pointA, pointB } = state.calibration;
+      if (pointA.px === null || pointB.px === null) {
+        showToast('Pilih posisi Titik A dan Titik B di atas peta PDF terlebih dahulu.', 'warning');
+        return;
+      }
+      if (isNaN(aLat) || isNaN(aLon) || isNaN(bLat) || isNaN(bLon)) {
+        showToast('Masukkan nilai Latitude dan Longitude yang valid untuk Titik A & B.', 'warning');
+        return;
+      }
+      if (Math.abs(aLat - bLat) < 1e-7 || Math.abs(aLon - bLon) < 1e-7) {
+        showToast('Koordinat Titik A dan Titik B tidak boleh sama persis.', 'warning');
+        return;
+        state.pdfCanvas = offCanvas;
+        state.pdfWidth = viewport.width;
+        state.pdfHeight = viewport.height;
+        state.pdfFileName = fileName || 'peta.pdf';
+
+        // Otomatis beralih ke mode Peta PDF & tampilkan full-screen
+        setMapMode('pdf');
+        emptyStateOverlay.classList.add('opacity-0', 'pointer-events-none');
+        setTimeout(() => emptyStateOverlay.classList.add('hidden'), 300);
+
+        fitPdfToScreen();
+        showToast('Peta PDF siap! Silakan lakukan Kalibrasi 2 titik agar posisi GPS akurat.', 'success');
+
+        // Otomatis tawarkan kalibrasi jika belum terkalibrasi
+        if (!state.calibration.isCalibrated) {
+          setTimeout(() => {
+            openCalibrationModal();
+          }, 700);
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('Gagal membaca file PDF. Pastikan file tidak rusak atau terkunci.', 'error');
+      }
+    }
+
+    // =========================================================
+    // INTERAKSI PAN (GESER), ZOOM & KETUK KALIBRASI PADA KANVAS PDF
+    // =========================================================
+    let pointerDownPos = { x: 0, y: 0 };
+
+    pdfMapWrapper.addEventListener('mousedown', (e) => {
+      if (e.target !== mapCanvas) return;
+      state.view.isDragging = true;
+      state.view.lastX = e.clientX;
+      state.view.lastY = e.clientY;
+      pointerDownPos = { x: e.clientX, y: e.clientY };
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!state.view.isDragging) return;
+      const dx = e.clientX - state.view.lastX;
+      const dy = e.clientY - state.view.lastY;
+      state.view.offsetX += dx;
+      state.view.offsetY += dy;
+      state.view.lastX = e.clientX;
+      state.view.lastY = e.clientY;
+      renderScene();
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (!state.view.isDragging) return;
+      state.view.isDragging = false;
+      const moveDist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+      if (moveDist < 6) {
+        handleCanvasTap(e.clientX, e.clientY);
+      }
+    });
+
+    // Zoom dengan Scroll Mouse pada kanvas PDF
+    pdfMapWrapper.addEventListener('wheel', (e) => {
+      if (e.target !== mapCanvas) return;
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
+      zoomAtPoint(e.clientX, e.clientY, zoomFactor);
+    }, { passive: false });
+
+    // Touch Events untuk HP (Pan & Pinch-to-Zoom pada kanvas PDF)
+    pdfMapWrapper.addEventListener('touchstart', (e) => {
+      if (e.target !== mapCanvas) return;
+      if (e.touches.length === 1) {
+        state.view.isDragging = true;
+        state.view.lastX = e.touches[0].clientX;
+        state.view.lastY = e.touches[0].clientY;
+        pointerDownPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      } else if (e.touches.length === 2) {
+        state.view.isDragging = false;
+        state.view.initialPinchDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        state.view.initialScale = state.view.scale;
+      }
+    }, { passive: false });
+
+    pdfMapWrapper.addEventListener('touchmove', (e) => {
+      if (e.target !== mapCanvas) return;
+      e.preventDefault();
+      if (e.touches.length === 1 && state.view.isDragging) {
+        const dx = e.touches[0].clientX - state.view.lastX;
+        const dy = e.touches[0].clientY - state.view.lastY;
+        state.view.offsetX += dx;
+        state.view.offsetY += dy;
+        state.view.lastX = e.touches[0].clientX;
+        state.view.lastY = e.touches[0].clientY;
+        renderScene();
+      } else if (e.touches.length === 2 && state.view.initialPinchDist) {
+        const currentDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        const targetScale = state.view.initialScale * (currentDist / state.view.initialPinchDist);
+        const factor = targetScale / state.view.scale;
+        zoomAtPoint(midX, midY, factor);
+      }
+    }, { passive: false });
+
+    pdfMapWrapper.addEventListener('touchend', (e) => {
+      if (e.touches.length === 0) {
+        if (state.view.isDragging && e.changedTouches.length === 1) {
+          const t = e.changedTouches[0];
+          const moveDist = Math.hypot(t.clientX - pointerDownPos.x, t.clientY - pointerDownPos.y);
+          if (moveDist < 8) {
+            handleCanvasTap(t.clientX, t.clientY);
+          }
+        }
+        state.view.isDragging = false;
+        state.view.initialPinchDist = null;
+      }
+    });
+
+    function zoomAtPoint(clientX, clientY, factor) {
+      const rect = viewportContainer.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+
+      const newScale = Math.min(Math.max(state.view.scale * factor, 0.1), 15);
+      const actualFactor = newScale / state.view.scale;
+
+      state.view.offsetX = x - (x - state.view.offsetX) * actualFactor;
+      state.view.offsetY = y - (y - state.view.offsetY) * actualFactor;
+      state.view.scale = newScale;
+      renderScene();
+    }
+
+    // Tombol Kontrol Zoom Kanan (Mendukung kedua mode: Google Jalan & Peta PDF)
+    document.getElementById('zoomInBtn').addEventListener('click', () => {
+      if (state.mapMode === 'google' && state.leaflet.map) {
+        state.leaflet.map.zoomIn();
+        return;
+      }
+      const rect = viewportContainer.getBoundingClientRect();
+      zoomAtPoint(rect.width / 2, rect.height / 2, 1.3);
+    });
+
+    document.getElementById('zoomOutBtn').addEventListener('click', () => {
+      if (state.mapMode === 'google' && state.leaflet.map) {
+        state.leaflet.map.zoomOut();
+        return;
+      }
+      const rect = viewportContainer.getBoundingClientRect();
+      zoomAtPoint(rect.width / 2, rect.height / 2, 0.75);
+    });
+
+    document.getElementById('fitScreenBtn').addEventListener('click', () => {
+      if (state.mapMode === 'google' && state.leaflet.map) {
+        if (state.tracking.points.length > 1) {
+          state.leaflet.map.fitBounds(state.leaflet.trackPolyline.getBounds(), { padding: [50, 50] });
+          showToast('Menampilkan seluruh rute tracking di Peta Jalan', 'info');
+        } else if (state.gps.currentLat !== null) {
+          state.leaflet.map.setView([state.gps.currentLat, state.gps.currentLon], 17);
+          showToast('Peta disesuaikan ke lokasi terkini', 'info');
+        }
+        return;
+      }
+      fitPdfToScreen();
+      showToast('Peta PDF disesuaikan penuh ke layar', 'info');
+    });
+
+    document.getElementById('centerGpsBtn').addEventListener('click', () => {
+      if (state.gps.currentLat === null) {
+        showToast('Lokasi GPS belum terdeteksi. Coba aktifkan izin lokasi atau Simulasi GPS.', 'warning');
+        return;
+      }
+      if (state.mapMode === 'google' && state.leaflet.map) {
+        state.leaflet.map.setView([state.gps.currentLat, state.gps.currentLon], 18);
+        return;
+      }
+      if (!state.calibration.isCalibrated) {
+        showToast('Kalibrasi peta PDF terlebih dahulu agar posisi dapat dipusatkan.', 'warning');
+        return;
+      }
+      const pdfPt = gpsToPdfPixel(state.gps.currentLat, state.gps.currentLon);
+      if (pdfPt) {
+        const rect = viewportContainer.getBoundingClientRect();
+        state.view.offsetX = rect.width / 2 - pdfPt.px * state.view.scale;
+        state.view.offsetY = rect.height / 2 - pdfPt.py * state.view.scale;
+        renderScene();
+      }
+    });
+      // Simpan ke array track hanya jika perekaman aktif
+      if (state.tracking.isRecording) {
+        const pts = state.tracking.points;
+        if (pts.length > 0) {
+          const prev = pts[pts.length - 1];
+          const dist = haversineDistance(prev.lat, prev.lon, lat, lon);
+          // Filter noise GPS kecil (< 1 meter) saat diam kecuali mode simulasi
+          if (dist < 1.0 && !isSim) {
+            updateLeafletLayers();
+            renderScene();
+            return;
+          }
+          state.tracking.totalDistanceMeters += dist;
+        }
+
+        pts.push({
+          lat,
+          lon,
+          ele: alt !== null ? alt : 0,
+          time: new Date().toISOString(),
+          accuracy: acc
+        });
+
+        updateTrackingStatsUI();
+        saveSessionToLocal();
+      }
+
+      updateLeafletLayers();
+      renderScene();
+    }
+
+        state.tracking.timerInterval = setInterval(() => {
+          state.tracking.elapsedMs = Date.now() - state.tracking.startTime;
+          document.getElementById('statDuration').textContent = formatDuration(state.tracking.elapsedMs);
+        }, 1000);
+
+        showToast('Perekaman jalur GPS aktif!', 'success');
+      } else {
+        // Jeda perekaman
+      state.calibration.isCalibrated = true;
+      calibrationModal.classList.add('hidden');
+      document.getElementById('calibStatusDot').classList.remove('bg-rose-500');
+      document.getElementById('calibStatusDot').classList.add('bg-emerald-400');
+
+      saveSessionToLocal();
+      renderScene();
+      showToast('Kalibrasi peta PDF berhasil diterapkan!', 'success');
+    });
+
+    function formatDuration(ms) {
+      const totalSec = Math.floor(ms / 1000);
+      const hrs = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+      const mins = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+      const secs = String(totalSec % 60).padStart(2, '0');
+      return `${hrs}:${mins}:${secs}`;
+    }
+
+    function updateTrackingStatsUI() {
+      const km = state.tracking.totalDistanceMeters / 1000;
+      document.getElementById('statDistance').textContent = `${km.toFixed(2)} km`;
+      document.getElementById('statPoints').textContent = state.tracking.points.length;
+    }
+
+    // Modal Waypoint
+    const waypointModal = document.getElementById('waypointModal');
+    document.getElementById('addWaypointBtn').addEventListener('click', () => {
+      if (state.gps.currentLat === null) {
+        showToast('Menunggu posisi GPS sebelum menandai waypoint.', 'warning');
+        return;
+      }
+      document.getElementById('wptNameInput').value = `WPT-${String(state.tracking.waypoints.length + 1).padStart(2, '0')}`;
+      document.getElementById('wptDescInput').value = '';
+      waypointModal.classList.remove('hidden');
+    });
+
+    document.getElementById('cancelWptBtn').addEventListener('click', () => {
+      waypointModal.classList.add('hidden');
+    });
+
+    document.getElementById('confirmWptBtn').addEventListener('click', () => {
+      const name = document.getElementById('wptNameInput').value.trim() || `WPT-${state.tracking.waypoints.length + 1}`;
+      const desc = document.getElementById('wptDescInput').value.trim();
+
+      state.tracking.waypoints.push({
+        name,
+        desc,
+        lat: state.gps.currentLat,
+        lon: state.gps.currentLon,
+        ele: state.gps.altitude || 0,
+        time: new Date().toISOString()
+      });
+
+      waypointModal.classList.add('hidden');
+      renderScene();
+      showToast(`Waypoint "${name}" berhasil disimpan!`, 'success');
+    });
+
+    // Reset Jejak
+    document.getElementById('resetTrackBtn').addEventListener('click', () => {
+      state.tracking.isRecording = false;
+      clearInterval(state.tracking.timerInterval);
+      state.tracking.elapsedMs = 0;
+      state.tracking.points = [];
+      state.tracking.waypoints = [];
+      state.tracking.totalDistanceMeters = 0;
+
+      startPauseBtn.classList.remove('bg-amber-600', 'hover:bg-amber-500');
+      startPauseBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-500');
+      startPauseText.textContent = 'Mulai Rekam';
+
+      document.getElementById('statDuration').textContent = '00:00:00';
+      updateTrackingStatsUI();
+      renderScene();
+      showToast('Data jejak dan waypoint telah direset.', 'info');
+    });
+
+    // =========================================================
+    // MODE SIMULASI PERGERAKAN GPS (UNTUK UJI COBA DALAM RUANGAN)
+    // =========================================================
+    document.getElementById('toggleSimBtn').addEventListener('click', () => {
+      if (state.gps.isSimulating) {
+        // Matikan simulasi
+        state.gps.isSimulating = false;
+        clearInterval(state.gps.simInterval);
+        document.getElementById('simBtnText').textContent = 'Simulasi GPS';
+        document.getElementById('toggleSimBtn').classList.remove('bg-sky-600', 'text-white');
+        showToast('Mode simulasi dihentikan.', 'info');
+      } else {
+        state.gps.isSimulating = true;
+        document.getElementById('simBtnText').textContent = 'Stop Simulasi';
+        document.getElementById('toggleSimBtn').classList.add('bg-sky-600', 'text-white');
+        showToast('Simulasi pergerakan GPS dimulai!', 'success');
+
+        // Tentukan titik pusat simulasi (dari kalibrasi PDF jika ada, atau dari lokasi GPS / pusat peta Google)
+        let centerLat, centerLon, radiusLat, radiusLon;
+        if (state.calibration.isCalibrated) {
+          const { pointA, pointB } = state.calibration;
+          centerLat = (pointA.lat + pointB.lat) / 2;
+        state.tracking.timerInterval = setInterval(() => {
+          state.tracking.elapsedMs = Date.now() - state.tracking.startTime;
+          document.getElementById('statDuration').textContent = formatDuration(state.tracking.elapsedMs);
+        }, 1000);
+
+        requestScreenWakeLock();
+        showToast('Perekaman jalur GPS aktif & layar dijaga menyala!', 'success');
+      } else {
+        // Jeda perekaman
+        state.tracking.isRecording = false;
+        clearInterval(state.tracking.timerInterval);
+        releaseScreenWakeLock();
+        saveSessionToLocal();
+
+        startPauseBtn.classList.remove('bg-amber-600', 'hover:bg-amber-500');
+        startPauseBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-500');
+        startPauseText.textContent = 'Lanjut Rekam';
+        showToast('Perekaman dijeda.', 'info');
+      }
+    });
+      waypointModal.classList.add('hidden');
+      rebuildLeafletWaypoints();
+      saveSessionToLocal();
+      renderScene();
+      showToast(`Waypoint "${name}" berhasil disimpan!`, 'success');
+    });
+
+    // Reset Jejak
+    document.getElementById('resetTrackBtn').addEventListener('click', () => {
+      state.tracking.isRecording = false;
+      clearInterval(state.tracking.timerInterval);
+      releaseScreenWakeLock();
+      state.tracking.elapsedMs = 0;
+      state.tracking.points = [];
+      state.tracking.waypoints = [];
+      state.tracking.totalDistanceMeters = 0;
+
+      startPauseBtn.classList.remove('bg-amber-600', 'hover:bg-amber-500');
+      startPauseBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-500');
+      startPauseText.textContent = 'Mulai Rekam';
+
+      document.getElementById('statDuration').textContent = '00:00:00';
+      updateTrackingStatsUI();
+      updateLeafletLayers();
+      rebuildLeafletWaypoints();
+      saveSessionToLocal();
+      renderScene();
+      showToast('Data jejak dan waypoint telah direset.', 'info');
+    });
+
+    // =========================================================
+    // GENERATOR & EKSPOR + SHARE FILE GPX 1.1 STANDAR
+    // =========================================================
+    function buildGpxString() {
+      const { points, waypoints } = state.tracking;
+      if (points.length === 0 && waypoints.length === 0) {
+        return null;
+      }
+
+      const escapeXml = (str) =>
+        String(str || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&apos;');
+
+      const nowIso = new Date().toISOString();
+      let gpx = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+      gpx += `<gpx version="1.1" creator="PetaTrack PDF Android App" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">\n`;
+      gpx += `  <metadata>\n`;
+      gpx += `    <name>${escapeXml(state.pdfFileName.replace(/\.pdf$/i, ''))}</name>\n`;
+      gpx += `    <time>${nowIso}</time>\n`;
+      gpx += `  </metadata>\n`;
+
+      for (const wpt of waypoints) {
+        gpx += `  <wpt lat="${wpt.lat.toFixed(7)}" lon="${wpt.lon.toFixed(7)}">\n`;
+        gpx += `    <ele>${Number(wpt.ele || 0).toFixed(1)}</ele>\n`;
+        gpx += `    <time>${wpt.time}</time>\n`;
+        gpx += `    <name>${escapeXml(wpt.name)}</name>\n`;
+        if (wpt.desc) gpx += `    <desc>${escapeXml(wpt.desc)}</desc>\n`;
+        gpx += `  </wpt>\n`;
+      }
+
+      if (points.length > 0) {
+        gpx += `  <trk>\n`;
+        gpx += `    <name>Jalur_${escapeXml(state.pdfFileName.replace(/\.pdf$/i, ''))}</name>\n`;
+        gpx += `    <trkseg>\n`;
+        for (const pt of points) {
+          gpx += `      <trkpt lat="${pt.lat.toFixed(7)}" lon="${pt.lon.toFixed(7)}">\n`;
+          gpx += `        <ele>${Number(pt.ele || 0).toFixed(1)}</ele>\n`;
+          gpx += `        <time>${pt.time}</time>\n`;
+          gpx += `      </trkpt>\n`;
+        }
+        gpx += `    </trkseg>\n`;
+        gpx += `  </trk>\n`;
+      }
+
+      gpx += `</gpx>`;
+      return gpx;
+    }
+
+    function downloadBlobFile(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    document.getElementById('exportGpxBtn').addEventListener('click', () => {
+      const gpx = buildGpxString();
+      if (!gpx) {
+        showToast('Belum ada titik jalur atau waypoint untuk diekspor.', 'warning');
+        return;
+      }
+      const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+      const fileName = `Track_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.gpx`;
+      downloadBlobFile(blob, fileName);
+      showToast(`File ${fileName} berhasil diunduh!`, 'success');
+    });
+
+    // Native Share API (Kirim langsung file GPX ke WhatsApp / Telegram / Drive di Android)
+    document.getElementById('shareGpxBtn').addEventListener('click', async () => {
+      const gpx = buildGpxString();
+      if (!gpx) {
+        showToast('Belum ada titik jalur atau waypoint untuk dibagikan.', 'warning');
+        return;
+      }
+
+      const fileName = `Track_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.gpx`;
+      const gpxFile = new File([gpx], fileName, { type: 'application/gpx+xml' });
+
+      if (navigator.canShare && navigator.canShare({ files: [gpxFile] })) {
+        try {
+          await navigator.share({
+            title: 'Hasil Tracking GPS - PetaTrack PDF',
+            text: `Jejak perjalanan GPS (${(state.tracking.totalDistanceMeters / 1000).toFixed(2)} km, ${state.tracking.points.length} titik).`,
+            files: [gpxFile]
+          });
+          showToast('File GPX berhasil dibagikan!', 'success');
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            showToast('Gagal membuka dialog berbagi.', 'error');
+          }
+        }
+      } else {
+        // Fallback otomatis ke download langsung jika browser tidak mendukung file share
+        downloadBlobFile(new Blob([gpx], { type: 'application/gpx+xml' }), fileName);
+        showToast('Perangkat tidak mendukung share langsung; file GPX otomatis diunduh.', 'info');
+      }
+    });
+
+    // =========================================================
+    // EVENT MODAL INSTALL ANDROID & APK BUILDER
+    // =========================================================
+    const installAndroidModal = document.getElementById('installAndroidModal');
+    document.getElementById('openInstallAndroidBtn').addEventListener('click', () => {
+      installAndroidModal.classList.remove('hidden');
+    });
+    document.getElementById('closeInstallAndroidBtn').addEventListener('click', () => {
+      installAndroidModal.classList.add('hidden');
+    });
+
+    document.getElementById('triggerNativeInstallBtn').addEventListener('click', async () => {
+      if (!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      const { outcome } = await deferredInstallPrompt.userChoice;
+      if (outcome === 'accepted') {
+        installAndroidModal.classList.add('hidden');
+      }
+      deferredInstallPrompt = null;
+    });
+
+    const apkBuilderModal = document.getElementById('apkBuilderModal');
+    document.getElementById('openApkBuilderBtn').addEventListener('click', () => {
+      apkBuilderModal.classList.remove('hidden');
+    });
+    document.getElementById('closeApkBuilderBtn').addEventListener('click', () => {
+      apkBuilderModal.classList.add('hidden');
+    });
+
+    // Download 1: index.html Lengkap
+    document.getElementById('downloadFullHtmlBtn').addEventListener('click', () => {
+      const fullHtml = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+      const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+      downloadBlobFile(blob, 'index.html');
+      showToast('File index.html lengkap berhasil diunduh!', 'success');
+    });
+
+    // Download 2: Paket Konfigurasi Capacitor & AndroidManifest.xml
+    document.getElementById('downloadCapacitorPkgBtn').addEventListener('click', () => {
+      const capacitorConfig = {
+        appId: 'id.petatrack.gps',
+        appName: 'PetaTrack PDF',
+        webDir: 'www',
+        bundledWebRuntime: false,
+        android: {
+          allowMixedContent: true
+        }
+      };
+
+      const androidManifestXml = `<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Izin Lokasi Akurat GPS & Jaringan -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="true" />
+
+    <!-- Izin Internet untuk Google Maps Jalan/Satelit & CDN -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Izin Menjaga Layar Tetap Menyala Saat Tracking -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Izin Membaca File PDF & Menyimpan Ekspor GPX -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+    <application
+        android:allowBackup="true"
+        android:label="PetaTrack PDF"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>`;
+
+      const bundleText = `====================================================
+PAKET KONFIGURASI BUILD APK ANDROID - PETATRACK PDF
+====================================================
+
+1. SIMPAN SEBAGAI: capacitor.config.json
+----------------------------------------------------
+${JSON.stringify(capacitorConfig, null, 2)}
+
+2. SIMPAN SEBAGAI: android/app/src/main/AndroidManifest.xml
+----------------------------------------------------
+${androidManifestXml}
+`;
+
+      const blob = new Blob([bundleText], { type: 'text/plain;charset=utf-8' });
+      downloadBlobFile(blob, 'PetaTrack_Android_Build_Config.txt');
+      showToast('Konfigurasi Capacitor & AndroidManifest.xml berhasil diunduh!', 'success');
+    });
+
+    // =========================================================
+    // INISIALISASI SAAT HALAMAN SELESAI DIMUAT
+    // =========================================================
+    window.onload = function () {
+      setupPwaAssets();
+      initGoogleLeafletMap();
+      resizeMainCanvas();
+      setMapMode('google');
+      loadSessionFromLocal();
+      initRealGpsTracking();
+    };
+  </script>
+</body>
+</html>
+```
